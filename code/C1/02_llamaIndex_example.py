@@ -9,8 +9,8 @@ load_dotenv()
 
 # 使用 AIHubmix
 Settings.llm = OpenAILike(
-    model="glm-4.7-flash-free",
-    api_key=os.getenv("DEEPSEEK_API_KEY"),
+    model="coding-glm-5.1-free",
+    api_key=os.getenv("AIHUBMIX_API_KEY"),
     api_base="https://aihubmix.com/v1",
     is_chat_model=True
 )
@@ -22,10 +22,13 @@ Settings.llm = OpenAILike(
 # )
 Settings.embed_model = HuggingFaceEmbedding("BAAI/bge-small-zh-v1.5")
 
+# load local docs
 docs = SimpleDirectoryReader(input_files=["../../data/C1/markdown/easy-rl-chapter1.md"]).load_data()
 
+# build index based on loaded docs
 index = VectorStoreIndex.from_documents(docs)
 
+# set up query engine
 query_engine = index.as_query_engine()
 
 print(query_engine.get_prompts())
