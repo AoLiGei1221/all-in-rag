@@ -4,7 +4,7 @@ langchain-text-splitters==0.3.8
 langchain-unstructured==0.1.6
 langchain-community==0.3.27
 faiss-cpu>=1.7.0
-unstructured==0.18.11
+unstructured==0.18.3
 Markdown==3.8.2
 sentence-transformers>=3.0.0
 lazy_loader==0.4

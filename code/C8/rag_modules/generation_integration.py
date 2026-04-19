@@ -6,8 +6,9 @@ import os
 import logging
 from typing import List
 
+from openai import APIStatusError, AuthenticationError, OpenAIError, PermissionDeniedError, RateLimitError
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
-from langchain_community.chat_models.moonshot import MoonshotChat
+from langchain_community.chat_models import ChatOpenAI
 from langchain_core.documents import Document
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 class GenerationIntegrationModule:
     """生成集成模块 - 负责LLM集成和回答生成"""
     
-    def __init__(self, model_name: str = "kimi-k2-0711-preview", temperature: float = 0.1, max_tokens: int = 2048):
+    def __init__(self, model_name: str = "moonshotai/kimi-k2-0905", temperature: float = 0.1, max_tokens: int = 2048):
         """
         初始化生成集成模块
         
@@ -36,15 +37,18 @@ class GenerationIntegrationModule:
         """初始化大语言模型"""
         logger.info(f"正在初始化LLM: {self.model_name}")
 
-        api_key = os.getenv("MOONSHOT_API_KEY")
+        api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
-            raise ValueError("请设置 MOONSHOT_API_KEY 环境变量")
+            raise ValueError("请设置 OPENROUTER_API_KEY 环境变量")
 
-        self.llm = MoonshotChat(
+        base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+
+        self.llm = ChatOpenAI(
             model=self.model_name,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
-            moonshot_api_key=api_key
+            api_key=api_key,
+            base_url=base_url
         )
         
         logger.info("LLM初始化完成")
@@ -82,7 +86,7 @@ class GenerationIntegrationModule:
             | StrOutputParser()
         )
 
-        response = chain.invoke(query)
+        response = self._invoke_chain(chain, query)
         return response
     
     def generate_step_by_step_answer(self, query: str, context_docs: List[Document]) -> str:
@@ -135,7 +139,7 @@ class GenerationIntegrationModule:
             | StrOutputParser()
         )
 
-        response = chain.invoke(query)
+        response = self._invoke_chain(chain, query)
         return response
     
     def query_rewrite(self, query: str) -> str:
@@ -190,7 +194,7 @@ class GenerationIntegrationModule:
             | StrOutputParser()
         )
 
-        response = chain.invoke(query).strip()
+        response = self._invoke_chain(chain, query).strip()
 
         # 记录重写结果
         if response != query:
@@ -237,7 +241,7 @@ class GenerationIntegrationModule:
             | StrOutputParser()
         )
 
-        result = chain.invoke(query).strip().lower()
+        result = self._invoke_chain(chain, query).strip().lower()
 
         # 确保返回有效的路由类型
         if result in ['list', 'detail', 'general']:
@@ -306,8 +310,7 @@ class GenerationIntegrationModule:
             | StrOutputParser()
         )
 
-        for chunk in chain.stream(query):
-            yield chunk
+        yield from self._stream_chain(chain, query)
 
     def generate_step_by_step_answer_stream(self, query: str, context_docs: List[Document]):
         """
@@ -358,8 +361,7 @@ class GenerationIntegrationModule:
             | StrOutputParser()
         )
 
-        for chunk in chain.stream(query):
-            yield chunk
+        yield from self._stream_chain(chain, query)
 
     def _build_context(self, docs: List[Document], max_length: int = 2000) -> str:
         """
@@ -399,3 +401,41 @@ class GenerationIntegrationModule:
             current_length += len(doc_text)
         
         return "\n" + "="*50 + "\n".join(context_parts)
+
+    def _invoke_chain(self, chain, query: str) -> str:
+        """调用LLM链并转换常见API错误为可读提示。"""
+        try:
+            return chain.invoke(query)
+        except Exception as exc:
+            raise RuntimeError(self._format_llm_error(exc)) from exc
+
+    def _stream_chain(self, chain, query: str):
+        """流式调用LLM链并转换常见API错误为可读提示。"""
+        try:
+            for chunk in chain.stream(query):
+                yield chunk
+        except Exception as exc:
+            raise RuntimeError(self._format_llm_error(exc)) from exc
+
+    def _format_llm_error(self, exc: Exception) -> str:
+        message = str(exc)
+
+        if isinstance(exc, AuthenticationError):
+            return "LLM调用失败：OPENROUTER_API_KEY 无效或未授权，请检查 .env 中的密钥。"
+
+        if isinstance(exc, PermissionDeniedError):
+            lowered = message.lower()
+            if "insufficient" in lowered or "quota" in lowered or "balance" in lowered:
+                return "LLM调用失败：OpenRouter 账号余额不足或额度用尽，请充值后重试，或更换可用的 OPENROUTER_API_KEY。"
+            return f"LLM调用失败：OpenRouter 拒绝访问，请检查账号权限和模型权限。原始错误：{message}"
+
+        if isinstance(exc, RateLimitError):
+            return "LLM调用失败：请求过于频繁或触发限流，请稍后重试。"
+
+        if isinstance(exc, APIStatusError):
+            return f"LLM调用失败：OpenRouter API 返回 HTTP {exc.status_code}。原始错误：{message}"
+
+        if isinstance(exc, OpenAIError):
+            return f"LLM调用失败：OpenRouter/OpenAI-compatible API 调用异常。原始错误：{message}"
+
+        return f"LLM调用失败：{message}"

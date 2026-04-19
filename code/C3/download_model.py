@@ -1,13 +1,15 @@
 import requests
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 def download_visualized_bge_model():
     """
     下载 Visual BGE 模型权重文件
     如果模型文件不存在，则从 Hugging Face 下载
     """
     # 定义模型路径和下载URL
-    model_dir = Path("../../models/bge")
+    model_dir = REPO_ROOT / "models" / "bge"
     model_file = model_dir / "Visualized_base_en_v1.5.pth"
     download_url = "https://huggingface.co/BAAI/bge-visualized/resolve/main/Visualized_base_en_v1.5.pth?download=true"
     

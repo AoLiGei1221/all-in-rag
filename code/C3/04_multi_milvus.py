@@ -8,10 +8,14 @@ import numpy as np
 import cv2
 from PIL import Image
 
+# 在跑这个项目之前需要跑download_model这个程序在这个folder里面
+
 # 1. 初始化设置
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 MODEL_NAME = "BAAI/bge-base-en-v1.5"
-MODEL_PATH = "../../models/bge/Visualized_base_en_v1.5.pth"
-DATA_DIR = "../../data/C3"
+MODEL_PATH = os.path.join(REPO_ROOT, "models", "bge", "Visualized_base_en_v1.5.pth")
+DATA_DIR = os.path.join(REPO_ROOT, "data", "C3")
 COLLECTION_NAME = "multimodal_demo"
 MILVUS_URI = "http://localhost:19530"
 
@@ -19,6 +23,11 @@ MILVUS_URI = "http://localhost:19530"
 class Encoder:
     """编码器类，用于将图像和文本编码为向量。"""
     def __init__(self, model_name: str, model_path: str):
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(
+                f"模型权重文件不存在: {model_path}\n"
+                "请先运行: python download_model.py"
+            )
         self.model = Visualized_BGE(model_name_bge=model_name, model_weight=model_path)
         self.model.eval()
 
@@ -126,6 +135,7 @@ print("已加载 Collection 到内存中。")
 # 7. 执行多模态检索
 print(f"\n--> 正在 '{COLLECTION_NAME}' 中执行检索")
 query_image_path = os.path.join(DATA_DIR, "dragon", "query.png")
+# 找符合一条龙的东西
 query_text = "一条龙"
 query_vector = encoder.encode_query(image_path=query_image_path, text=query_text)
 
